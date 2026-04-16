@@ -31,6 +31,7 @@ class RobotClient:
             try:
                 data = self.sock.recv(1024)
                 if not data:
+                    self.running = False
                     break
 
                 msg = data.decode().strip()
@@ -40,6 +41,7 @@ class RobotClient:
                     self.robot_state = msg.split(":", 1)[1]
 
             except:
+                self.running = False
                 break
 
     def send_cmd(self, cmd):

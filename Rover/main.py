@@ -6,21 +6,20 @@ from comm.comm_thread import CommThread
 from camera.camera_thread import CameraThread
 
 # --------------------------------------------------
-# State Machine Initialization
+# Hardware Initialization
 # --------------------------------------------------
 state_machine = StateMachine()
 state_machine.set_state(RobotState.IDLE)
 
+from control.motor_control import MotorController
+motor_controller = MotorController()
 
-def supervisor_thread():
-    while True:
-        print("[SUPERVISOR] Monitoring system health")
-        time.sleep(2)
+
 
 # --------------------------------------------------
 # REAL COMMUNICATION THREAD
 # --------------------------------------------------
-comm = CommThread(state_machine)
+comm = CommThread(state_machine, motor_controller)
 
 def comm_runner():
     comm.run()
@@ -38,8 +37,6 @@ def camera_runner():
 # --------------------------------------------------
 threads = [
     threading.Thread(target=camera_runner, daemon=True),
-    # threading.Thread(target=lidar_thread, daemon=True),
-    threading.Thread(target=supervisor_thread, daemon=True),
     threading.Thread(target=comm_runner, daemon=True),
 ]
 

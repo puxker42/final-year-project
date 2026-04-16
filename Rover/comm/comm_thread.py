@@ -1,12 +1,14 @@
 import socket
 import time
+from control.motor_control import MotorController
 from state_machine import RobotState
 
 HEARTBEAT_TIMEOUT = 2.0  # seconds
 
 class CommThread:
-    def __init__(self, state_machine, host="0.0.0.0", port=9000):
+    def __init__(self, state_machine, motor_controller, host="0.0.0.0", port=9000):
         self.state_machine = state_machine
+        self.motor_controller = motor_controller
         self.host = host
         self.port = port
         self.last_heartbeat = time.time()
@@ -42,9 +44,11 @@ class CommThread:
                 self.state_machine.set_state(RobotState.IDLE)
 
         elif msg.startswith("CMD:"):
+            self.last_heartbeat = time.time() # Any command counts as heartbeat
             cmd = msg.split(":")[1]
             print(f"[COMM] Recv Command: {cmd}")
             self.send_ack("ACK:CMD\n")
+            self.motor_controller.process_command(cmd)
             self.state_machine.set_state(RobotState.MANUAL_CONTROL)
 
         elif msg == "STATUS?":
@@ -53,8 +57,10 @@ class CommThread:
 
     def check_heartbeat(self):
         if time.time() - self.last_heartbeat > HEARTBEAT_TIMEOUT:
-            if self.state_machine.get_state() != RobotState.COMM_LOST:
-                print("[COMM] Heartbeat lost")
+            current_state = self.state_machine.get_state()
+            if current_state != RobotState.COMM_LOST:
+                print("[COMM] Heartbeat lost! Stopping motors...")
+                self.motor_controller.stop()
                 self.state_machine.set_state(RobotState.COMM_LOST)
 
     def run(self):
@@ -66,14 +72,21 @@ class CommThread:
                 if not data:
                     raise ConnectionError
 
-                self.handle_message(data.decode())
+                messages = data.decode().splitlines()
+                for msg in messages:
+                    if msg.strip():
+                        self.handle_message(msg)
 
             except socket.timeout:
                 pass
-            except:
-                print("[COMM] Connection lost")
+            except Exception as e:
+                print(f"[COMM] Connection error: {e}")
                 self.state_machine.set_state(RobotState.COMM_LOST)
-                self.start_server()
+                time.sleep(2)
+                try:
+                    self.start_server()
+                except:
+                    pass
 
             self.check_heartbeat()
             time.sleep(0.05)

@@ -10,7 +10,6 @@ class RobotState(Enum):
     SHUTDOWN = auto()
 
 import threading
-from state_machine import RobotState
 
 class StateMachine:
     def __init__(self):
