@@ -41,6 +41,10 @@
           <span class="status-label">Obstacle</span>
           <span id="obs-status" class="status-value" style="color: #00ff41;">CLEAR</span>
         </div>
+        <div class="status-box">
+          <span class="status-label">Mode (M)</span>
+          <span id="mode-status" class="status-value" style="color: #ffffff;">MANUAL</span>
+        </div>
       </div>
 
       <div class="crosshair"></div>
@@ -55,6 +59,11 @@
         </div>
       </div>
     </div>
+
+    <!-- Path Blocked Popup -->
+    <div id="path-blocked-popup" class="popup-overlay" style="display: none;">
+      <div class="popup-content">PATH BLOCKED<br><span style="font-size: 1.2rem; color: #fff;">Forward Movement Disabled</span></div>
+    </div>
   </div>
 
   <script>
@@ -64,12 +73,20 @@
     // --- State ---
     let lastAckTime = Date.now();
     let currentCmd = null;
+    let mode = 'MANUAL';
+    let currentObstacleDist = -1;
+    let autoState = 'FORWARD';
+    let popupTimeout = null;
+    let sweepTimer = null;
+    let sweeping = false;
+    let sweepDistances = { FWD: -1, LEFT: -1, RIGHT: -1 };
 
     // --- Network ---
     function send(cmd) {
       fetch('/cmd/' + cmd).catch(e => console.error("Cmd Error:", e));
       updateHudCommand(cmd);
     }
+    // this is nt gonna works  jwe 're doing it then qw til see st '
 
     function updateStatus() {
       fetch('/status')
@@ -106,15 +123,24 @@
               
               const obs = document.getElementById('obs-status');
               if (d.sensors.obstacle_dist !== undefined && d.sensors.obstacle_dist !== -1.0) {
+                  currentObstacleDist = d.sensors.obstacle_dist;
                   obs.innerText = d.sensors.obstacle_dist.toFixed(1) + " cm";
-                  if (d.sensors.obstacle_dist <= 20.0) {
+                  if (d.sensors.obstacle_dist <= 30.0) {
                       obs.style.color = "#ff0055";
                       obs.classList.add('alert-flash');
                   } else {
                       obs.style.color = "#00ff41";
                       obs.classList.remove('alert-flash');
                   }
+                  
+                  // In Manual mode, if we are moving forward and an obstacle appears, stop automatically
+                  if (mode === 'MANUAL' && currentObstacleDist <= 30.0 && activeKey === 'ArrowUp') {
+                      send('STOP');
+                      activeKey = null;
+                      showPopup();
+                  }
               } else {
+                  currentObstacleDist = -1;
                   obs.innerText = "NO SIGNAL";
                   obs.style.color = "#ff0055";
                   obs.classList.remove('alert-flash');
@@ -134,6 +160,7 @@
     let cmdTimeout;
 
     function updateHudCommand(cmd) {
+      currentCmd = cmd;
       cmdDisplay.innerText = cmd;
       cmdDisplay.classList.add('show');
 
@@ -145,6 +172,170 @@
         }
       }, 500);
     }
+
+    function showPopup() {
+        const popup = document.getElementById('path-blocked-popup');
+        popup.style.display = 'flex';
+        clearTimeout(popupTimeout);
+        popupTimeout = setTimeout(() => {
+            popup.style.display = 'none';
+        }, 1500);
+    }
+
+    // --- Auto Mode Logic ---
+    function startSweep() {
+        if (mode !== 'AUTO') return;
+        sweeping = true;
+        send('STOP');
+        autoState = 'SWEEP_INIT';
+        
+        setTimeout(() => {
+            if (mode !== 'AUTO') return;
+            sweepDistances.FWD = currentObstacleDist;
+            
+            // Check Left
+            send('LEFT');
+            autoState = 'SWEEP_LEFT_TURN';
+            setTimeout(() => {
+                if (mode !== 'AUTO') return;
+                send('STOP');
+                
+                setTimeout(() => {
+                    if (mode !== 'AUTO') return;
+                    sweepDistances.LEFT = currentObstacleDist;
+                    
+                    // Check Right (turn 2x to cross center)
+                    send('RIGHT');
+                    autoState = 'SWEEP_RIGHT_TURN';
+                    setTimeout(() => {
+                        if (mode !== 'AUTO') return;
+                        send('STOP');
+                        
+                        setTimeout(() => {
+                            if (mode !== 'AUTO') return;
+                            sweepDistances.RIGHT = currentObstacleDist;
+                            finishSweep();
+                        }, 2500); // Wait 2.5s for distance to stabilize
+                    }, 3000);
+                }, 2500); // Wait 2.5s for distance to stabilize
+            }, 1000);
+        }, 2500); // Wait 2.5s for distance to stabilize
+    }
+
+    function finishSweep() {
+        if (mode !== 'AUTO') return;
+        
+        let bestDist = sweepDistances.RIGHT; // Currently facing RIGHT
+        let bestDir = 'RIGHT';
+
+        if (sweepDistances.LEFT > bestDist) {
+            bestDist = sweepDistances.LEFT;
+            bestDir = 'LEFT';
+        }
+        if (sweepDistances.FWD > bestDist) {
+            bestDist = sweepDistances.FWD;
+            bestDir = 'FWD';
+        }
+
+        if (bestDist <= 30.0) {
+            // All blocked! Back up to get out of the blocked state
+            send('BACK');
+            setTimeout(() => {
+                if (mode !== 'AUTO') return;
+                // Turn slightly to face a new potential path
+                send('LEFT');
+                setTimeout(() => {
+                    if (mode !== 'AUTO') return;
+                    send('STOP');
+                    sweeping = false;
+                    resetSweepTimer();
+                }, 1500);
+            }, 1500); // Back up for 1.5s
+            return;
+        }
+
+        if (bestDir === 'RIGHT') {
+            // Already facing right, proceed
+            sweeping = false;
+            send('FWD');
+            autoState = 'FORWARD';
+            resetSweepTimer();
+        } else if (bestDir === 'FWD') {
+            // Face center (turn left 1s)
+            send('LEFT');
+            setTimeout(() => {
+                if (mode !== 'AUTO') return;
+                send('STOP');
+                sweeping = false;
+                send('FWD');
+                autoState = 'FORWARD';
+                resetSweepTimer();
+            }, 1000);
+        } else if (bestDir === 'LEFT') {
+            // Face left (turn left 2s)
+            send('LEFT');
+            setTimeout(() => {
+                if (mode !== 'AUTO') return;
+                send('STOP');
+                sweeping = false;
+                send('FWD');
+                autoState = 'FORWARD';
+                resetSweepTimer();
+            }, 3000);
+        }
+    }
+
+    function resetSweepTimer() {
+        clearTimeout(sweepTimer);
+        sweepTimer = setTimeout(() => {
+            if (mode === 'AUTO' && !sweeping) {
+                startSweep();
+            }
+        }, 6000); // Trigger sweep every 6 seconds
+    }
+
+    function toggleMode() {
+        if (mode === 'MANUAL') {
+            mode = 'AUTO';
+            document.getElementById('mode-status').innerText = 'AUTO';
+            document.getElementById('mode-status').style.color = '#00ffff';
+            autoState = 'FORWARD';
+            sweeping = false;
+            
+            if (currentObstacleDist > 30.0 || currentObstacleDist === -1) {
+                send('FWD');
+                resetSweepTimer();
+            } else {
+                startSweep();
+            }
+        } else {
+            mode = 'MANUAL';
+            document.getElementById('mode-status').innerText = 'MANUAL';
+            document.getElementById('mode-status').style.color = '#ffffff';
+            send('STOP');
+            sweeping = false;
+            clearTimeout(sweepTimer);
+        }
+    }
+
+    function autoLoop() {
+        if (mode !== 'AUTO') return;
+        if (currentObstacleDist === -1) return;
+        if (sweeping) return;
+
+        if (currentObstacleDist <= 30.0) {
+            // Blocked! Initiate sweep immediately
+            startSweep();
+        } else {
+            // Safe distance
+            if (autoState !== 'FORWARD' || currentCmd !== 'FWD') {
+                send('FWD');
+                autoState = 'FORWARD';
+            }
+        }
+    }
+    
+    setInterval(autoLoop, 300);
 
     // --- Input Handling ---
     const keyMap = {
@@ -158,10 +349,30 @@
     let activeKey = null;
 
     document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'm') {
+          e.preventDefault();
+          if (e.repeat) return;
+          toggleMode();
+          return;
+      }
+      
+      if (mode === 'AUTO') {
+          if (e.key === ' ') {
+              e.preventDefault();
+              toggleMode(); // Revert to manual and stop
+          }
+          return;
+      }
+
       const cmd = keyMap[e.key];
       if (cmd) {
         e.preventDefault();
         if (e.repeat) return;
+
+        if (cmd === 'FWD' && currentObstacleDist !== -1 && currentObstacleDist <= 3.0) {
+            showPopup();
+            return;
+        }
 
         if (e.key === ' ') {
           send('STOP');
@@ -174,6 +385,7 @@
     });
 
     document.addEventListener('keyup', (e) => {
+      if (mode === 'AUTO') return;
       if (keyMap[e.key]) {
         e.preventDefault();
         // If we released the key that was driving
