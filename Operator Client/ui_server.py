@@ -90,7 +90,8 @@ def video_feed():
 def status():
     return jsonify(
         connected=robot.running,
-        last_ack=robot.last_ack
+        last_ack=robot.last_ack,
+        sensors=robot.sensors
     )
 
 @app.route("/cmd/<cmd>")

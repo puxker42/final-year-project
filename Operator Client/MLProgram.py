@@ -20,7 +20,7 @@ while True:
     final_frame = detector.process_frame(frame)
 
     if final_frame is not None:
-        cv2.imshow("S.C.O.U.T. AI Detection", final_frame)
+        cv2.imshow("AgraNetra AI Detection", final_frame)
 
     # Break loop on 'q' key
     if cv2.waitKey(1) & 0xFF == ord('q'):

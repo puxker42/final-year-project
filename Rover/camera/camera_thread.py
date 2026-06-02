@@ -10,14 +10,25 @@ class CameraThread:
         self.port = port
         self.running = True
         self.client_socket = None
+        self._server_socket = None  # Keep reference to close it properly
 
     def start_server(self):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(('0.0.0.0', self.port))
-        server_socket.listen(1)
+        # Close any previous server socket before rebinding
+        if self._server_socket:
+            try:
+                self._server_socket.close()
+            except Exception:
+                pass
+            self._server_socket = None
+
+        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # SO_REUSEADDR allows immediate rebind after disconnect (critical for reconnection)
+        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server_socket.bind(('0.0.0.0', self.port))
+        self._server_socket.listen(1)
         print(f"[CAMERA] Server listening on port {self.port}")
 
-        self.client_socket, addr = server_socket.accept()
+        self.client_socket, addr = self._server_socket.accept()
         print(f"[CAMERA] Client connected from {addr}")
 
     def run(self):
@@ -53,7 +64,7 @@ class CameraThread:
 
                     try:
                         self.client_socket.sendall(message_size + data)
-                    except (ConnectionResetError, BrokenPipeError):
+                    except (ConnectionResetError, BrokenPipeError, OSError):
                         print("[CAMERA] Connection lost")
                         break
                 

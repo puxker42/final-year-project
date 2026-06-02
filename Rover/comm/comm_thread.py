@@ -1,14 +1,16 @@
 import socket
 import time
-from control.motor_control import MotorController
 from state_machine import RobotState
 
 HEARTBEAT_TIMEOUT = 2.0  # seconds
 
 class CommThread:
-    def __init__(self, state_machine, motor_controller, host="0.0.0.0", port=9000):
+    def __init__(self, state_machine, motor_controller, metal_sensor=None, gas_sensor=None, ultrasonic_sensor=None, host="0.0.0.0", port=9000):
         self.state_machine = state_machine
         self.motor_controller = motor_controller
+        self.metal_sensor = metal_sensor
+        self.gas_sensor = gas_sensor
+        self.ultrasonic_sensor = ultrasonic_sensor
         self.host = host
         self.port = port
         self.last_heartbeat = time.time()
@@ -30,8 +32,8 @@ class CommThread:
     def send_ack(self, msg):
         try:
             self.conn.sendall(msg.encode())
-        except:
-            pass
+        except Exception as e:
+            print(f"[COMM] Failed to send ack: {e}")
 
     def handle_message(self, msg):
         msg = msg.strip()
@@ -40,15 +42,23 @@ class CommThread:
             self.last_heartbeat = time.time()
             self.send_ack("ACK:HB\n")
 
+            m = 1 if self.metal_sensor and self.metal_sensor.metal_flag.is_set() else 0
+            g = 1 if self.gas_sensor and self.gas_sensor.gas_flag.is_set() else 0
+            u = self.ultrasonic_sensor.last_distance if self.ultrasonic_sensor else -1.0
+            self.send_ack(f"SENSORS:{m},{g},{u}\n")
+
             if self.state_machine.get_state() == RobotState.COMM_LOST:
                 self.state_machine.set_state(RobotState.IDLE)
 
         elif msg.startswith("CMD:"):
             self.last_heartbeat = time.time() # Any command counts as heartbeat
-            cmd = msg.split(":")[1]
+            cmd = msg.split(":", 1)[1]   # maxsplit=1 so values with ':' are safe
             print(f"[COMM] Recv Command: {cmd}")
             self.send_ack("ACK:CMD\n")
-            self.motor_controller.process_command(cmd)
+            try:
+                self.motor_controller.process_command(cmd)
+            except ValueError as e:
+                print(f"[COMM] Unknown command ignored: {e}")
             self.state_machine.set_state(RobotState.MANUAL_CONTROL)
 
         elif msg == "STATUS?":
@@ -81,12 +91,24 @@ class CommThread:
                 pass
             except Exception as e:
                 print(f"[COMM] Connection error: {e}")
+                self.motor_controller.stop()  # Safety: stop motors immediately on any disconnect
                 self.state_machine.set_state(RobotState.COMM_LOST)
+                # Close the old listening socket before rebinding to avoid 'Address already in use'
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+                try:
+                    self.sock.close()
+                except Exception:
+                    pass
                 time.sleep(2)
                 try:
                     self.start_server()
-                except:
-                    pass
+                except Exception as reconnect_err:
+                    print(f"[COMM] Reconnect failed: {reconnect_err}")
+                    time.sleep(3)  # Back-off before retry loop
+                    continue       # Skip heartbeat check — conn may not be valid yet
 
             self.check_heartbeat()
             time.sleep(0.05)

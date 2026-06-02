@@ -1,59 +1,64 @@
 import RPi.GPIO as GPIO
 
 class MotorController:
-    def __init__(self, in1=17, in2=18, in3=22, in4=23, mode=GPIO.BCM):
-        self.IN1 = in1 # Left motor(s) forward pin
-        self.IN2 = in2 # Left motor(s) backward pin
-        self.IN3 = in3 # Right motor(s) forward pin
-        self.IN4 = in4 # Right motor(s) backward pin
-    
-        GPIO.setmode(mode)
+    def __init__(self, in1=17, in2=18, in3=22, in4=23, destroy_pin=21):
+        self.in1 = in1
+        self.in2 = in2
+        self.in3 = in3
+        self.in4 = in4
+        self.destroy_pin = destroy_pin
 
-        GPIO.setup(self.IN1, GPIO.OUT)
-        GPIO.setup(self.IN2, GPIO.OUT)
-        GPIO.setup(self.IN3, GPIO.OUT)
-        GPIO.setup(self.IN4, GPIO.OUT)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.in1, GPIO.OUT)
+        GPIO.setup(self.in2, GPIO.OUT)
+        GPIO.setup(self.in3, GPIO.OUT)
+        GPIO.setup(self.in4, GPIO.OUT)
+        GPIO.setup(self.destroy_pin, GPIO.OUT)
 
         self.stop()  # Ensure motors are stopped at startup
+        GPIO.output(self.destroy_pin, GPIO.LOW)
 
     # ---------------- BASIC MOVEMENTS ----------------
 
     def stop(self):
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 0)
-
-    def forward(self):
-        GPIO.output(self.IN1, 1)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 1)
+        GPIO.output(self.in1, GPIO.LOW)
+        GPIO.output(self.in2, GPIO.LOW)
+        GPIO.output(self.in3, GPIO.LOW)
+        GPIO.output(self.in4, GPIO.LOW)
 
     def backward(self):
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 1)
-        GPIO.output(self.IN3, 1)
-        GPIO.output(self.IN4, 0)
+        print("[MOTOR] BACKWARD execution started")
+        GPIO.output(self.in1, GPIO.HIGH)
+        GPIO.output(self.in2, GPIO.LOW)
+        GPIO.output(self.in3, GPIO.LOW)
+        GPIO.output(self.in4, GPIO.HIGH)
 
-    def left(self):
-        # Differential turn: Left side backward, Right side forward
-        GPIO.output(self.IN1, 1)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 1)
-        GPIO.output(self.IN4, 0)
+    def forward(self):
+        GPIO.output(self.in1, GPIO.LOW)
+        GPIO.output(self.in2, GPIO.HIGH)
+        GPIO.output(self.in3, GPIO.HIGH)
+        GPIO.output(self.in4, GPIO.LOW)
 
     def right(self):
+        # Differential turn: Left side backward, Right side forward
+        GPIO.output(self.in1, GPIO.HIGH)
+        GPIO.output(self.in2, GPIO.LOW)
+        GPIO.output(self.in3, GPIO.HIGH)
+        GPIO.output(self.in4, GPIO.LOW)
+
+    def left(self):
+        print("[MOTOR] LEFT execution started")
         # Differential turn: Left side forward, Right side backward
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 1)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 1)
+        GPIO.output(self.in1, GPIO.LOW)
+        GPIO.output(self.in2, GPIO.HIGH)
+        GPIO.output(self.in3, GPIO.LOW)
+        GPIO.output(self.in4, GPIO.HIGH)
 
     # ---------------- COMMAND INTERFACE ----------------
 
     def process_command(self, cmd: str):
         cmd = cmd.strip().upper()
+        print(f"[MOTOR] Processing command: {cmd}")
 
         if cmd == "FWD":
             self.forward()
@@ -65,11 +70,17 @@ class MotorController:
             self.right()
         elif cmd == "STOP":
             self.stop()
+        elif cmd == "DESTROY":
+            self.destroy()
         else:
             raise ValueError(f"Invalid command: {cmd}")
+
+    def destroy(self):
+        self.stop()
+        GPIO.output(self.destroy_pin, GPIO.HIGH)
 
     # ---------------- CLEANUP ----------------
 
     def cleanup(self):
         self.stop()
-        GPIO.cleanup()
+        # GPIO.cleanup() should typically be handled by the main program

@@ -8,7 +8,7 @@ class MLDetector:
         SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
         # Load models using absolute paths
-        custom_model_path = os.path.join(SCRIPT_DIR, "runs", "detect", "train5", "weights", "best.pt")
+        custom_model_path = os.path.join(SCRIPT_DIR, "runs", "detect", "train8", "weights", "best.pt")
         coco_model_path = os.path.join(SCRIPT_DIR, "yolov8n.pt")
         
         print(f"[ML] Loading models...")
