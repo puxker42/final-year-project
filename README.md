@@ -62,10 +62,16 @@ It is highly recommended to use a **Raspberry Pi 4 Model B (or higher)** for the
 *Note: The code uses BCM numbering (`GPIO.setmode(GPIO.BCM)`). Ensure you use a Raspberry Pi pinout diagram to match BCM numbers to the physical pins.*
 
 ### Rover Software Setup
-1. Transfer the `Rover` directory to the Raspberry Pi.
-2. Install dependencies (e.g., `RPi.GPIO` for pin control).
-3. Connect the USB camera, motors, and sensors to the GPIO pins according to the table above.
-4. Run the rover software:
+1. **Enable Wi-Fi Hotspot on Raspberry Pi:**
+   To allow the Operator Client to connect directly to the rover without an external router, configure the Raspberry Pi to act as a Wi-Fi hotspot. On modern Raspberry Pi OS (using NetworkManager), you can enable it using the following command:
+   ```bash
+   sudo nmcli dev wifi hotspot ifname wlan0 ssid AgraNetra_Rover password your_secure_password
+   ```
+   *(Note: The Rover IP when acting as a hotspot is typically `10.42.0.1`, which is the default IP configured in the Operator Client.)*
+2. Transfer the `Rover` directory to the Raspberry Pi.
+3. Install dependencies (e.g., `RPi.GPIO` for pin control).
+4. Connect the USB camera, motors, and sensors to the GPIO pins according to the table above.
+5. Run the rover software:
    ```bash
    cd Rover
    python main.py
