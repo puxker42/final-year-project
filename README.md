@@ -42,10 +42,29 @@ The control center software running on the operator's machine.
 * Ultralytics (for YOLOv8)
 * PyTorch
 
-### Rover Setup
-1. Transfer the `Rover` directory to the onboard computer (e.g., Raspberry Pi).
-2. Install dependencies (e.g., RPi.GPIO, if applicable).
-3. Connect the camera, motors, and sensors to the appropriate GPIO pins as defined in the hardware configuration.
+### Hardware Setup
+It is highly recommended to use a **Raspberry Pi 4 Model B (or higher)** for the onboard computer, as running the video streaming thread, communication thread, and multiple sensor threads simultaneously requires sufficient processing power and memory.
+
+#### Pin Configuration (GPIO / BCM)
+
+| Component | Sensor/Module Pin | Raspberry Pi GPIO (BCM) |
+| :--- | :--- | :--- |
+| **Motor Controller** | IN1 | GPIO 17 |
+| | IN2 | GPIO 18 |
+| | IN3 | GPIO 22 |
+| | IN4 | GPIO 23 |
+| | Destroy/Enable | GPIO 21 |
+| **Ultrasonic Sensor** | TRIG | GPIO 24 |
+| | ECHO | GPIO 25 |
+| **Metal Detector** | D0 | GPIO 26 |
+| **Gas Sensor** | D0 | GPIO 27 |
+
+*Note: The code uses BCM numbering (`GPIO.setmode(GPIO.BCM)`). Ensure you use a Raspberry Pi pinout diagram to match BCM numbers to the physical pins.*
+
+### Rover Software Setup
+1. Transfer the `Rover` directory to the Raspberry Pi.
+2. Install dependencies (e.g., `RPi.GPIO` for pin control).
+3. Connect the USB camera, motors, and sensors to the GPIO pins according to the table above.
 4. Run the rover software:
    ```bash
    cd Rover
